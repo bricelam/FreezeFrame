@@ -8,6 +8,8 @@ using Windows.Foundation;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 using Windows.Storage;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
 
 namespace FreezeFrame;
 
@@ -23,12 +25,23 @@ public sealed partial class MainWindow : Window
     public MainWindow()
         => InitializeComponent();
 
-    async void HandlePlay(object sender, RoutedEventArgs e)
+    async void HandleOpen(object sender, RoutedEventArgs e)
     {
-        _playButton.Icon = new SymbolIcon(Symbol.Pause);
-        _playButton.Label = "Pause";
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.PicturesLibrary,
 
-        var file = await StorageFile.GetFileFromPathAsync(@"C:\Users\brice\OneDrive\Pictures\Camera Roll\2022\07\20220701_200732000_iOS.MOV");
+            // TODO: Query codecs
+            FileTypeFilter = { ".avi", ".mov", ".mp4" }
+        };
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+
+        var file = await picker.PickSingleFileAsync();
+        if (file == null)
+            return;
+
+        _openGrid.Visibility = Visibility.Collapsed;
+        _canvasControl.Visibility = Visibility.Visible;
 
         var imageProperties = await file.Properties.GetImagePropertiesAsync();
         var dateTaken = imageProperties.DateTaken;
@@ -69,7 +82,14 @@ public sealed partial class MainWindow : Window
         }
 
         _player.Source = playbackItem;
-        //_player.Position = TimeSpan.Zero;
+        _player.Position = TimeSpan.Zero;
+    }
+
+    async void HandlePlay(object sender, RoutedEventArgs e)
+    {
+        _playButton.Icon = new SymbolIcon(Symbol.Pause);
+        _playButton.Label = "Pause";
+
         _player.Play();
         //_player.StepForwardOneFrame();
         //_player.Position -= TimeSpan.FromSeconds(oneFrame);

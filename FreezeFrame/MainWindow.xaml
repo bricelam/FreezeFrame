@@ -12,7 +12,10 @@
       <RowDefinition />
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
-    <canvas:CanvasControl Name="_canvasControl" Draw="HandleDraw" />
+    <Grid Name="_openGrid">
+      <Button HorizontalAlignment="Center" VerticalAlignment="Center" Click="HandleOpen">Open video</Button>
+    </Grid>
+    <canvas:CanvasControl Name="_canvasControl" Draw="HandleDraw" Visibility="Collapsed" />
     <Border Grid.Row="1" BorderBrush="{ThemeResource CommandBarBorderBrushOpen}" BorderThickness="0,1,0,0">
       <Grid Height="116" Background="{ThemeResource CommandBarBackgroundOpen}">
         <Grid.RowDefinitions>
