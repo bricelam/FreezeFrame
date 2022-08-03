@@ -9,14 +9,17 @@
     mc:Ignorable="d">
   <Grid>
     <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
       <RowDefinition />
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
-    <Grid Name="_openGrid">
-      <Button HorizontalAlignment="Center" VerticalAlignment="Center" Click="HandleOpen">Open video</Button>
-    </Grid>
-    <canvas:CanvasControl Name="_canvasControl" Draw="HandleDraw" Visibility="Collapsed" />
-    <Border Grid.Row="1" BorderBrush="{ThemeResource CommandBarBorderBrushOpen}" BorderThickness="0,1,0,0">
+    <MenuBar>
+      <MenuBarItem Title="File">
+        <MenuFlyoutItem Text="Open" Click="HandleOpen" />
+      </MenuBarItem>
+    </MenuBar>
+    <canvas:CanvasControl Grid.Row="1" Name="_canvasControl" Draw="HandleDraw" SizeChanged="HandleSizeChanged" />
+    <Border Grid.Row="2" BorderBrush="{ThemeResource CommandBarBorderBrushOpen}" BorderThickness="0,1,0,0">
       <Grid Height="116" Background="{ThemeResource CommandBarBackgroundOpen}">
         <Grid.RowDefinitions>
           <RowDefinition Height="32" />
