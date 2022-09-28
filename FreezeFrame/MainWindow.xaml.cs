@@ -1,15 +1,21 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Input;
+using Windows.Devices.Geolocation;
 using Windows.Foundation;
 using Windows.Media.Core;
 using Windows.Media.Playback;
+using Windows.Storage;
+using Windows.Storage.FileProperties;
 using Windows.Storage.Pickers;
+using Windows.System;
 using WinRT.Interop;
 
 namespace FreezeFrame;
@@ -18,6 +24,8 @@ public sealed partial class MainWindow : Window
 {
     string _dir;
     string _fileName;
+    DateTimeOffset _dateTaken;
+    Geopoint _geotag;
 
     float _sourceWidth;
     float _sourceHeight;
@@ -51,9 +59,10 @@ public sealed partial class MainWindow : Window
         _fileName = Path.GetFileNameWithoutExtension(file.Path);
 
         var imageProperties = await file.Properties.GetImagePropertiesAsync();
-        var dateTaken = imageProperties.DateTaken;
-        var latitude = imageProperties.Latitude;
-        var longitude = imageProperties.Longitude;
+        _dateTaken = imageProperties.DateTaken;
+        _geotag = imageProperties.Latitude.HasValue
+            ? new Geopoint(new BasicGeoposition(imageProperties.Latitude.Value, imageProperties.Longitude.Value, 0.0))
+            : null;
 
         var source = MediaSource.CreateFromStorageFile(file);
         await source.OpenAsync();
@@ -101,16 +110,25 @@ public sealed partial class MainWindow : Window
             };
             _player.VideoFrameAvailable += (sender, args) =>
             {
-                _currentPosition = sender.Position.TotalSeconds * _framesPerSecond;
-                sender.CopyFrameToVideoSurface(_currentFrame);
-                _canvasControl.Invalidate();
+                if (Monitor.TryEnter(_currentFrame))
+                {
+                    try
+                    {
+                        _currentPosition = sender.Position.TotalSeconds * _framesPerSecond;
+                        sender.CopyFrameToVideoSurface(_currentFrame);
+                    }
+                    finally
+                    {
+                        Monitor.Exit(_currentFrame);
+                    }
+
+                    _canvasControl.Invalidate();
+                }
             };
         }
 
         _player.Source = playbackItem;
         _player.Position = TimeSpan.Zero;
-        //_player.StepForwardOneFrame();
-        //_player.Position -= TimeSpan.FromSeconds(oneFrame);
     }
 
     void HandlePlay(object sender, RoutedEventArgs e)
@@ -142,13 +160,50 @@ public sealed partial class MainWindow : Window
 
     async void HandlePhoto(object sender, RoutedEventArgs e)
     {
-        // TODO: Save dateTaken, latitude, and longitude
-        // TODO: Avoid tearing
-        await _currentFrame.SaveAsync(Path.Combine(_dir, _fileName + "." + Math.Floor(_currentPosition) + ".jpg"));
+        string path;
+        Monitor.Enter(_currentFrame);
+        try
+        {
+            path = Path.Combine(_dir, _fileName + "." + Math.Floor(_currentPosition) + ".jpg");
+            await _currentFrame.SaveAsync(path);
+        }
+        finally
+        {
+            Monitor.Exit(_currentFrame);
+        }
+
+        var file = await StorageFile.GetFileFromPathAsync(path);
+        var imageProperties = await file.Properties.GetImagePropertiesAsync();
+        // TODO: Offset using current position?
+        imageProperties.DateTaken = _dateTaken;
+        await imageProperties.SavePropertiesAsync();
+        if (_geotag is not null)
+            await GeotagHelper.SetGeotagAsync(file, _geotag);
     }
 
     void HandleSizeChanged(object sender, SizeChangedEventArgs e)
         => UpdateTargetSize();
+
+    void HandleKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (_player is null)
+            return;
+
+        switch (e.Key)
+        {
+            case VirtualKey.Left:
+                // NB: StepBackwardOneFrame ignores FPS
+                _player.Position -= TimeSpan.FromSeconds(1.0 / _framesPerSecond);
+                e.Handled = true;
+                break;
+
+            case VirtualKey.Right:
+                _player.StepForwardOneFrame();
+                e.Handled = true;
+                break;
+        }
+
+    }
 
     void UpdateTargetSize()
     {
