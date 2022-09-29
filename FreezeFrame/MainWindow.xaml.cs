@@ -2,12 +2,14 @@
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Devices.Geolocation;
 using Windows.Foundation;
 using Windows.Media.Core;
@@ -55,6 +57,11 @@ public sealed partial class MainWindow : Window
         if (file == null)
             return;
 
+        await Open(file);
+    }
+
+    async Task Open(StorageFile file)
+    {
         _dir = Path.GetDirectoryName(file.Path);
         _fileName = Path.GetFileNameWithoutExtension(file.Path);
 
@@ -76,7 +83,7 @@ public sealed partial class MainWindow : Window
         UpdateTargetSize();
 
         _framesPerSecond = (double)videoProperties.FrameRate.Numerator / videoProperties.FrameRate.Denominator;
-        _slider.Maximum = source.Duration.Value.TotalSeconds * _framesPerSecond;
+        _slider.Maximum = Math.Round(source.Duration.Value.TotalSeconds * _framesPerSecond) - 1.0;
         _slider.ThumbToolTipValueConverter = new TimeSpanFormatter(_framesPerSecond);
 
         _currentFrame?.Dispose();
@@ -108,13 +115,16 @@ public sealed partial class MainWindow : Window
                     });
                 }
             };
-            _player.VideoFrameAvailable += (sender, args) =>
+            _player.VideoFrameAvailable += async (sender, args) =>
             {
+                // TODO: Is there a better way to ensure position is up to date?
+                await Task.Yield();
+
                 if (Monitor.TryEnter(_currentFrame))
                 {
                     try
                     {
-                        _currentPosition = sender.Position.TotalSeconds * _framesPerSecond;
+                        _currentPosition = Math.Round(sender.Position.TotalSeconds * _framesPerSecond);
                         sender.CopyFrameToVideoSurface(_currentFrame);
                     }
                     finally
@@ -164,7 +174,7 @@ public sealed partial class MainWindow : Window
         Monitor.Enter(_currentFrame);
         try
         {
-            path = Path.Combine(_dir, _fileName + "." + Math.Floor(_currentPosition) + ".jpg");
+            path = Path.Combine(_dir, _fileName + "." + _currentPosition + ".jpg");
             await _currentFrame.SaveAsync(path);
         }
         finally
@@ -193,16 +203,30 @@ public sealed partial class MainWindow : Window
         {
             case VirtualKey.Left:
                 // NB: StepBackwardOneFrame ignores FPS
-                _player.Position -= TimeSpan.FromSeconds(1.0 / _framesPerSecond);
-                e.Handled = true;
+                _player.Position = TimeSpan.FromSeconds((_currentPosition - 1.0) / _framesPerSecond);
                 break;
 
             case VirtualKey.Right:
                 _player.StepForwardOneFrame();
-                e.Handled = true;
                 break;
         }
+    }
 
+    void HandleDragOver(object sender, DragEventArgs e)
+    {
+        e.AcceptedOperation = DataPackageOperation.Link;
+        e.DragUIOverride.IsGlyphVisible = false;
+        e.DragUIOverride.Caption = "Open";
+    }
+
+    async void HandleDrop(object sender, DragEventArgs e)
+    {
+        if (!e.DataView.Contains(StandardDataFormats.StorageItems))
+            return;
+
+        var storageItems = await e.DataView.GetStorageItemsAsync();
+
+        await Open((StorageFile)storageItems[0]);
     }
 
     void UpdateTargetSize()
