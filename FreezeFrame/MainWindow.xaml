@@ -18,7 +18,17 @@
         <MenuFlyoutItem Text="Open" Click="HandleOpen" />
       </MenuBarItem>
     </MenuBar>
-    <canvas:CanvasControl Grid.Row="1" Name="_canvasControl" Draw="HandleDraw" SizeChanged="HandleSizeChanged" />
+    <ScrollViewer Grid.Row="1"
+                  Name="_scrollViewer"
+                  HorizontalScrollBarVisibility="Auto"
+                  ZoomMode="Enabled"
+                  MaxZoomFactor="1.0"
+                  SizeChanged="HandleSizeChanged">
+      <canvas:CanvasControl Name="_canvasControl"
+                            Draw="HandleDraw"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top" />
+    </ScrollViewer>
     <Border Grid.Row="2" BorderBrush="{ThemeResource CommandBarBorderBrushOpen}" BorderThickness="0,1,0,0">
       <Grid Height="116" Background="{ThemeResource CommandBarBackgroundOpen}">
         <Grid.RowDefinitions>

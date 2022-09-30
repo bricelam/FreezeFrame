@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -31,10 +32,8 @@ public sealed partial class MainWindow : Window
 
     float _sourceWidth;
     float _sourceHeight;
-    double _targetWidth;
-    double _targetHeight;
-
     double _framesPerSecond;
+    TimeSpan _previousPosition = TimeSpan.MinValue;
     double _currentPosition;
     CanvasRenderTarget _currentFrame;
     MediaPlayer _player;
@@ -72,7 +71,17 @@ public sealed partial class MainWindow : Window
             : null;
 
         var source = MediaSource.CreateFromStorageFile(file);
-        await source.OpenAsync();
+        try
+        {
+            await source.OpenAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.Fail(ex.ToString());
+
+            // TODO: Show error
+            throw;
+        }
 
         var playbackItem = new MediaPlaybackItem(source);
 
@@ -80,7 +89,9 @@ public sealed partial class MainWindow : Window
 
         _sourceWidth = videoProperties.Width;
         _sourceHeight = videoProperties.Height;
-        UpdateTargetSize();
+        _canvasControl.Width = _sourceWidth;
+        _canvasControl.Height = _sourceHeight;
+        UpdateMinZoomFactor();
 
         _framesPerSecond = (double)videoProperties.FrameRate.Numerator / videoProperties.FrameRate.Denominator;
         _slider.Maximum = Math.Round(source.Duration.Value.TotalSeconds * _framesPerSecond) - 1.0;
@@ -117,8 +128,14 @@ public sealed partial class MainWindow : Window
             };
             _player.VideoFrameAvailable += async (sender, args) =>
             {
-                // TODO: Is there a better way to ensure position is up to date?
-                await Task.Yield();
+                // HACK: Why isn't this up to date?
+                var timer = Stopwatch.StartNew();
+                while (sender.Position == _previousPosition
+                    && timer.ElapsedMilliseconds < 1000 / _framesPerSecond)
+                {
+                    await Task.Yield();
+                }
+                _previousPosition = sender.Position;
 
                 if (Monitor.TryEnter(_currentFrame))
                 {
@@ -138,6 +155,7 @@ public sealed partial class MainWindow : Window
         }
 
         _player.Source = playbackItem;
+        _previousPosition = TimeSpan.MinValue;
         _player.Position = TimeSpan.Zero;
     }
 
@@ -165,7 +183,7 @@ public sealed partial class MainWindow : Window
         // TODO: Bind to player instead?
         _slider.Value = _currentPosition;
 
-        args.DrawingSession.DrawImage(_currentFrame, new Rect(0, 0, _targetWidth, _targetHeight));
+        args.DrawingSession.DrawImage(_currentFrame, new Rect(0, 0, sender.ActualWidth, sender.ActualHeight));
     }
 
     async void HandlePhoto(object sender, RoutedEventArgs e)
@@ -192,7 +210,7 @@ public sealed partial class MainWindow : Window
     }
 
     void HandleSizeChanged(object sender, SizeChangedEventArgs e)
-        => UpdateTargetSize();
+        => UpdateMinZoomFactor();
 
     void HandleKeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -229,13 +247,18 @@ public sealed partial class MainWindow : Window
         await Open((StorageFile)storageItems[0]);
     }
 
-    void UpdateTargetSize()
+    void UpdateMinZoomFactor()
     {
-        var scale = Math.Min(
-            _canvasControl.ActualWidth / _sourceWidth,
-            _canvasControl.ActualHeight / _sourceHeight);
-        _targetWidth = _sourceWidth * scale;
-        _targetHeight = _sourceHeight * scale;
+        var previousMinZoomFactor = _scrollViewer.MinZoomFactor;
+
+        _scrollViewer.MinZoomFactor = (float)Math.Min(
+            Math.Min(
+                _scrollViewer.ViewportWidth / _sourceWidth,
+                _scrollViewer.ViewportHeight / _sourceHeight),
+            1.0);
+
+        if (_scrollViewer.ZoomFactor == previousMinZoomFactor)
+            _scrollViewer.ZoomToFactor(_scrollViewer.MinZoomFactor);
     }
 
     class TimeSpanFormatter : IValueConverter
