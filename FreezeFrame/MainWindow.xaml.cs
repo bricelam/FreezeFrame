@@ -2,9 +2,11 @@
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.Effects;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -25,20 +27,20 @@ namespace FreezeFrame;
 
 public sealed partial class MainWindow : Window
 {
+    static readonly Guid VideoRotationProperty = new Guid("c380465d-2271-428c-9b83-ecea3b4a85c1");
+
     string _dir;
     string _fileName;
     DateTimeOffset _dateTaken;
     Geopoint _geotag;
+    uint _orientation;
 
-    float _sourceWidth;
-    float _sourceHeight;
     double _framesPerSecond;
     TimeSpan _previousPosition = TimeSpan.MinValue;
     double _currentPosition;
     CanvasRenderTarget _currentFrame;
     MediaPlayer _player;
 
-    bool _dragging;
     double _dragHorizontalOffset;
     double _dragVerticalOffset;
     Point _dragStartPosition;
@@ -58,7 +60,7 @@ public sealed partial class MainWindow : Window
         InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
 
         var file = await picker.PickSingleFileAsync();
-        if (file == null)
+        if (file is null)
             return;
 
         await Open(file);
@@ -92,18 +94,21 @@ public sealed partial class MainWindow : Window
 
         var videoProperties = playbackItem.VideoTracks.First().GetEncodingProperties();
 
-        _sourceWidth = videoProperties.Width;
-        _sourceHeight = videoProperties.Height;
-        _canvasControl.Width = _sourceWidth;
-        _canvasControl.Height = _sourceHeight;
+        var orientation = (uint)videoProperties.Properties[VideoRotationProperty];
+        (_canvasControl.Width, _canvasControl.Height) = orientation == 0u || orientation == 180u
+            ? (videoProperties.Width, videoProperties.Height)
+            : (videoProperties.Height, videoProperties.Width);
+        _scrollViewer.ZoomToFactor(_scrollViewer.MinZoomFactor);
         UpdateMinZoomFactor();
 
         _framesPerSecond = (double)videoProperties.FrameRate.Numerator / videoProperties.FrameRate.Denominator;
         _slider.Maximum = Math.Round(source.Duration.Value.TotalSeconds * _framesPerSecond) - 1.0;
         _slider.ThumbToolTipValueConverter = new TimeSpanFormatter(_framesPerSecond);
 
+        _orientation = 0u;
+
         _currentFrame?.Dispose();
-        _currentFrame = new CanvasRenderTarget(_canvasControl, _sourceWidth, _sourceHeight, 96);
+        _currentFrame = new CanvasRenderTarget(_canvasControl, (float)_canvasControl.Width, (float)_canvasControl.Height, 96f);
 
         if (_player is null)
         {
@@ -142,16 +147,17 @@ public sealed partial class MainWindow : Window
                 }
                 _previousPosition = sender.Position;
 
-                if (Monitor.TryEnter(_currentFrame))
+                var currentFrame = _currentFrame;
+                if (Monitor.TryEnter(currentFrame))
                 {
                     try
                     {
                         _currentPosition = Math.Round(sender.Position.TotalSeconds * _framesPerSecond);
-                        sender.CopyFrameToVideoSurface(_currentFrame);
+                        sender.CopyFrameToVideoSurface(currentFrame);
                     }
                     finally
                     {
-                        Monitor.Exit(_currentFrame);
+                        Monitor.Exit(currentFrame);
                     }
 
                     _canvasControl.Invalidate();
@@ -166,7 +172,7 @@ public sealed partial class MainWindow : Window
 
     void HandlePlay(object sender, RoutedEventArgs e)
     {
-        if (_player is null)
+        if (_currentFrame is null)
         {
             return;
         }
@@ -188,23 +194,31 @@ public sealed partial class MainWindow : Window
         // TODO: Bind to player instead?
         _slider.Value = _currentPosition;
 
-        args.DrawingSession.DrawImage(_currentFrame, new Rect(0, 0, sender.ActualWidth, sender.ActualHeight));
+        var transform = new Transform2DEffect
+        {
+            Source = _currentFrame,
+            TransformMatrix = Matrix3x2.CreateRotation(MathF.PI * _orientation / 180f)
+        };
+        var bounds = transform.GetBounds(sender);
+        args.DrawingSession.DrawImage(transform, new Rect(0, 0, bounds.Width, bounds.Height), bounds);
     }
 
     async void HandlePhoto(object sender, RoutedEventArgs e)
     {
         string path;
-        Monitor.Enter(_currentFrame);
+        var currentFrame = _currentFrame;
+        Monitor.Enter(currentFrame);
         try
         {
             path = Path.Combine(_dir, _fileName + "." + _currentPosition + ".jpg");
-            await _currentFrame.SaveAsync(path, CanvasBitmapFileFormat.Auto, 0.95f);
+            await currentFrame.SaveAsync(path, CanvasBitmapFileFormat.Auto, 0.95f);
         }
         finally
         {
-            Monitor.Exit(_currentFrame);
+            Monitor.Exit(currentFrame);
         }
 
+        // TODO: Save orientation
         var file = await StorageFile.GetFileFromPathAsync(path);
         var imageProperties = await file.Properties.GetImagePropertiesAsync();
         // TODO: Offset using current position?
@@ -214,12 +228,25 @@ public sealed partial class MainWindow : Window
             await GeotagHelper.SetGeotagAsync(file, _geotag);
     }
 
+    void HandleRotate(object sender, RoutedEventArgs e)
+    {
+        if (_currentFrame is null)
+            return;
+
+        _orientation += 90u;
+        if (_orientation == 360u)
+            _orientation = 0u;
+
+        (_canvasControl.Width, _canvasControl.Height) = (_canvasControl.Height, _canvasControl.Width);
+        UpdateMinZoomFactor();
+    }
+
     void HandleSizeChanged(object sender, SizeChangedEventArgs e)
         => UpdateMinZoomFactor();
 
     void HandleKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (_player is null)
+        if (_currentFrame is null)
             return;
 
         switch (e.Key)
@@ -269,15 +296,12 @@ public sealed partial class MainWindow : Window
             _dragStartPosition = currentPoint.Position;
             _dragHorizontalOffset = _scrollViewer.HorizontalOffset;
             _dragVerticalOffset = _scrollViewer.VerticalOffset;
-            _dragging = true;
+            _canvasControl.PointerMoved += HandlePointerMoved;
         }
     }
 
     void HandlePointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (!_dragging)
-            return;
-
         var currentPoint = e.GetCurrentPoint(_scrollViewer);
         _scrollViewer.ScrollToHorizontalOffset(_dragHorizontalOffset - (currentPoint.Position.X - _dragStartPosition.X));
         _scrollViewer.ScrollToVerticalOffset(_dragVerticalOffset - (currentPoint.Position.Y - _dragStartPosition.Y));
@@ -286,17 +310,20 @@ public sealed partial class MainWindow : Window
     void HandlePointerReleased(object sender, PointerRoutedEventArgs e)
     {
         if (!e.GetCurrentPoint(_scrollViewer).Properties.IsLeftButtonPressed)
-            _dragging = false;
+            _canvasControl.PointerMoved -= HandlePointerMoved;
     }
 
     void UpdateMinZoomFactor()
     {
+        if (double.IsNaN(_canvasControl.Width))
+            return;
+
         var previousMinZoomFactor = _scrollViewer.MinZoomFactor;
 
         _scrollViewer.MinZoomFactor = (float)Math.Min(
             Math.Min(
-                _scrollViewer.ViewportWidth / _sourceWidth,
-                _scrollViewer.ViewportHeight / _sourceHeight),
+                _scrollViewer.ViewportWidth / _canvasControl.Width,
+                _scrollViewer.ViewportHeight / _canvasControl.Height),
             1.0);
 
         if (_scrollViewer.ZoomFactor == previousMinZoomFactor)

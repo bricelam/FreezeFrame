@@ -30,7 +30,6 @@
                             VerticalAlignment="Top"
                             PointerWheelChanged="HandlePointerWheelChanged"
                             PointerPressed="HandlePointerPressed"
-                            PointerMoved="HandlePointerMoved"
                             PointerReleased="HandlePointerReleased" />
     </ScrollViewer>
     <Border Grid.Row="2" BorderBrush="{ThemeResource CommandBarBorderBrushOpen}" BorderThickness="0,1,0,0">
@@ -52,6 +51,7 @@
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center">
           <AppBarButton Name="_playButton" Icon="Play" Label="Play" Click="HandlePlay" />
           <AppBarButton Icon="Camera" Label="Take photo" Click="HandlePhoto" />
+          <AppBarButton Icon="Rotate" Label="Rotate" Click="HandleRotate" />
         </StackPanel>
       </Grid>
     </Border>
