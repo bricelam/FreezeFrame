@@ -27,7 +27,11 @@
       <canvas:CanvasControl Name="_canvasControl"
                             Draw="HandleDraw"
                             HorizontalAlignment="Left"
-                            VerticalAlignment="Top" />
+                            VerticalAlignment="Top"
+                            PointerWheelChanged="HandlePointerWheelChanged"
+                            PointerPressed="HandlePointerPressed"
+                            PointerMoved="HandlePointerMoved"
+                            PointerReleased="HandlePointerReleased" />
     </ScrollViewer>
     <Border Grid.Row="2" BorderBrush="{ThemeResource CommandBarBorderBrushOpen}" BorderThickness="0,1,0,0">
       <Grid Height="116" Background="{ThemeResource CommandBarBackgroundOpen}">

@@ -38,6 +38,11 @@ public sealed partial class MainWindow : Window
     CanvasRenderTarget _currentFrame;
     MediaPlayer _player;
 
+    bool _dragging;
+    double _dragHorizontalOffset;
+    double _dragVerticalOffset;
+    Point _dragStartPosition;
+
     public MainWindow()
         => InitializeComponent();
 
@@ -193,7 +198,7 @@ public sealed partial class MainWindow : Window
         try
         {
             path = Path.Combine(_dir, _fileName + "." + _currentPosition + ".jpg");
-            await _currentFrame.SaveAsync(path);
+            await _currentFrame.SaveAsync(path, CanvasBitmapFileFormat.Auto, 0.95f);
         }
         finally
         {
@@ -247,6 +252,43 @@ public sealed partial class MainWindow : Window
         await Open((StorageFile)storageItems[0]);
     }
 
+    void HandlePointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        if (e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift))
+        {
+            _scrollViewer.ScrollToHorizontalOffset(_scrollViewer.HorizontalOffset - e.GetCurrentPoint(_scrollViewer).Properties.MouseWheelDelta);
+            e.Handled = true;
+        }
+    }
+
+    void HandlePointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        var currentPoint = e.GetCurrentPoint(_scrollViewer);
+        if (currentPoint.Properties.IsLeftButtonPressed)
+        {
+            _dragStartPosition = currentPoint.Position;
+            _dragHorizontalOffset = _scrollViewer.HorizontalOffset;
+            _dragVerticalOffset = _scrollViewer.VerticalOffset;
+            _dragging = true;
+        }
+    }
+
+    void HandlePointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_dragging)
+            return;
+
+        var currentPoint = e.GetCurrentPoint(_scrollViewer);
+        _scrollViewer.ScrollToHorizontalOffset(_dragHorizontalOffset - (currentPoint.Position.X - _dragStartPosition.X));
+        _scrollViewer.ScrollToVerticalOffset(_dragVerticalOffset - (currentPoint.Position.Y - _dragStartPosition.Y));
+    }
+
+    void HandlePointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(_scrollViewer).Properties.IsLeftButtonPressed)
+            _dragging = false;
+    }
+
     void UpdateMinZoomFactor()
     {
         var previousMinZoomFactor = _scrollViewer.MinZoomFactor;
@@ -269,7 +311,7 @@ public sealed partial class MainWindow : Window
             => _framesPerSecond = framesPerSecond;
 
         public object Convert(object value, Type targetType, object parameter, string language)
-            => TimeSpan.FromSeconds((double)value / _framesPerSecond).ToString(@"hh\:mm\:ss");
+            => "Frame " + (double)value + " (" + TimeSpan.FromSeconds((double)value / _framesPerSecond).ToString(@"hh\:mm\:ss\.fff") + ")";
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)
             => throw new NotImplementedException();
