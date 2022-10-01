@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -15,11 +16,13 @@ using Microsoft.UI.Xaml.Input;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Devices.Geolocation;
 using Windows.Foundation;
+using Windows.Graphics.Imaging;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 using Windows.Storage;
 using Windows.Storage.FileProperties;
 using Windows.Storage.Pickers;
+using Windows.Storage.Streams;
 using Windows.System;
 using WinRT.Interop;
 
@@ -73,9 +76,7 @@ public sealed partial class MainWindow : Window
 
         var imageProperties = await file.Properties.GetImagePropertiesAsync();
         _dateTaken = imageProperties.DateTaken;
-        _geotag = imageProperties.Latitude.HasValue
-            ? new Geopoint(new BasicGeoposition(imageProperties.Latitude.Value, imageProperties.Longitude.Value, 0.0))
-            : null;
+        _geotag = await GeotagHelper.GetGeotagAsync(file);
 
         var source = MediaSource.CreateFromStorageFile(file);
         try
@@ -205,6 +206,9 @@ public sealed partial class MainWindow : Window
 
     async void HandlePhoto(object sender, RoutedEventArgs e)
     {
+        if (_currentFrame is null)
+            return;
+
         string path;
         var currentFrame = _currentFrame;
         Monitor.Enter(currentFrame);
@@ -218,14 +222,31 @@ public sealed partial class MainWindow : Window
             Monitor.Exit(currentFrame);
         }
 
-        // TODO: Save orientation
-        var file = await StorageFile.GetFileFromPathAsync(path);
-        var imageProperties = await file.Properties.GetImagePropertiesAsync();
-        // TODO: Offset using current position?
-        imageProperties.DateTaken = _dateTaken;
-        await imageProperties.SavePropertiesAsync();
+        using var stream = await FileRandomAccessStream.OpenAsync(path, FileAccessMode.ReadWrite);
+        var decoder = await BitmapDecoder.CreateAsync(stream);
+        var encoder = await BitmapEncoder.CreateForTranscodingAsync(stream, decoder);
+        await encoder.BitmapProperties.SetPropertiesAsync(
+            new Dictionary<string, BitmapTypedValue>
+            {
+                [SystemProperties.Photo.DateTaken] = new BitmapTypedValue(_dateTaken, PropertyType.DateTime),
+                [SystemProperties.Photo.Orientation] = new BitmapTypedValue(
+                    _orientation switch
+                    {
+                        // NB: Values don't align
+                        0u => PhotoOrientation.Normal,
+                        90u => PhotoOrientation.Rotate270,
+                        180u => PhotoOrientation.Rotate180,
+                        270u => PhotoOrientation.Rotate90
+                    },
+                    PropertyType.UInt16)
+            });
+        await encoder.FlushAsync();
+
         if (_geotag is not null)
+        {
+            var file = await StorageFile.GetFileFromPathAsync(path);
             await GeotagHelper.SetGeotagAsync(file, _geotag);
+        }
     }
 
     void HandleRotate(object sender, RoutedEventArgs e)
