@@ -32,6 +32,9 @@ public sealed partial class MainWindow : Window
 {
     static readonly Guid VideoRotationProperty = new Guid("c380465d-2271-428c-9b83-ecea3b4a85c1");
 
+    // TODO: Query codecs
+    static readonly string[] _knownExtensions = new[] { ".3g2", ".3gp", ".3gp2", ".3gpp", ".asf", ".avi", ".dvr-ms", ".m2t", ".m2ts", ".m4v", ".mkv", ".mod", ".mov", ".mp2v", ".mp4", ".mp4v", ".mpa", ".mpeg", ".mpg", ".mts", ".tod", ".tts", ".uvu", ".vob", ".webm", ".wm", ".wmv" };
+
     string _dir;
     string _fileName;
     DateTimeOffset _dateTaken;
@@ -55,11 +58,12 @@ public sealed partial class MainWindow : Window
     {
         var picker = new FileOpenPicker
         {
-            SuggestedStartLocation = PickerLocationId.PicturesLibrary,
-
-            // TODO: Query codecs
-            FileTypeFilter = { ".avi", ".mov", ".mp4" }
+            SuggestedStartLocation = PickerLocationId.PicturesLibrary
         };
+
+        foreach (var knownExtension in _knownExtensions)
+            picker.FileTypeFilter.Add(knownExtension);
+
         InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
 
         var file = await picker.PickSingleFileAsync();
@@ -79,17 +83,7 @@ public sealed partial class MainWindow : Window
         _geotag = await GeotagHelper.GetGeotagAsync(file);
 
         var source = MediaSource.CreateFromStorageFile(file);
-        try
-        {
-            await source.OpenAsync();
-        }
-        catch (Exception ex)
-        {
-            Debug.Fail(ex.ToString());
-
-            // TODO: Show error
-            throw;
-        }
+        await source.OpenAsync();
 
         var playbackItem = new MediaPlaybackItem(source);
 
@@ -283,8 +277,15 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    void HandleDragOver(object sender, DragEventArgs e)
+    async void HandleDragOver(object sender, DragEventArgs e)
     {
+        if (!e.DataView.Contains(StandardDataFormats.StorageItems))
+            return;
+
+        var storageItems = await e.DataView.GetStorageItemsAsync();
+        if (!_knownExtensions.Contains(Path.GetExtension(storageItems[0].Path)))
+            return;
+
         e.AcceptedOperation = DataPackageOperation.Link;
         e.DragUIOverride.IsGlyphVisible = false;
         e.DragUIOverride.Caption = "Open";
