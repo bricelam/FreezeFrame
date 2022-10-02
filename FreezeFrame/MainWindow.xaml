@@ -7,7 +7,10 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-  <Grid KeyDown="HandleKeyDown">
+  <Grid KeyDown="HandleKeyDown"
+        AllowDrop="True"
+        DragOver="HandleDragOver"
+        Drop="HandleDrop">
     <Grid.RowDefinitions>
       <RowDefinition />
       <RowDefinition Height="Auto" />
@@ -16,17 +19,13 @@
                   HorizontalScrollBarVisibility="Auto"
                   ZoomMode="Enabled"
                   MaxZoomFactor="1.0"
-                  SizeChanged="HandleSizeChanged"
-                  AllowDrop="True"
-                  DragOver="HandleDragOver"
-                  Drop="HandleDrop">
+                  SizeChanged="HandleSizeChanged">
       <canvas:CanvasControl Name="_canvasControl"
                             Draw="HandleDraw"
                             HorizontalAlignment="Left"
                             VerticalAlignment="Top"
                             PointerWheelChanged="HandlePointerWheelChanged"
-                            PointerPressed="HandlePointerPressed"
-                            PointerReleased="HandlePointerReleased" />
+                            PointerPressed="HandlePointerPressed" />
     </ScrollViewer>
     <Border Grid.Row="1" BorderBrush="{ThemeResource CommandBarBorderBrushOpen}" BorderThickness="0,1,0,0">
       <Grid Background="{ThemeResource CommandBarBackgroundOpen}">
@@ -34,7 +33,7 @@
           <ColumnDefinition />
           <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
-        <Slider Name="_slider" VerticalAlignment="Center" Margin="16,0,4,0" />
+        <Slider Name="_slider" ValueChanged="HandleSeek" VerticalAlignment="Center" Margin="16,0,4,0" />
         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,4,0">
           <AppBarButton Name="_playButton" Icon="Play" Label="Play" Click="HandlePlay" />
           <AppBarButton Icon="Camera" Label="Save" Click="HandlePhoto" />

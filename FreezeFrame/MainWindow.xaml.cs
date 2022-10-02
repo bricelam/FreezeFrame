@@ -11,6 +11,7 @@ using Microsoft.Graphics.Canvas.Effects;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Windows.ApplicationModel.DataTransfer;
@@ -53,6 +54,8 @@ public sealed partial class MainWindow : Window
     double _dragHorizontalOffset;
     double _dragVerticalOffset;
     Point _dragStartPosition;
+
+    SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
 
     public MainWindow()
     {
@@ -129,29 +132,29 @@ public sealed partial class MainWindow : Window
             };
             _player.VideoFrameAvailable += async (sender, args) =>
             {
-                // HACK: Why isn't this up to date?
-                var timer = Stopwatch.StartNew();
-                while (sender.Position == _previousPosition
-                    && timer.ElapsedMilliseconds < 1000 / _framesPerSecond)
+                if (_semaphore.CurrentCount != 0)
                 {
-                    await Task.Yield();
-                }
-                _previousPosition = sender.Position;
-
-                var currentFrame = _currentFrame;
-                if (Monitor.TryEnter(currentFrame))
-                {
+                    await _semaphore.WaitAsync();
                     try
                     {
+                        // HACK: Why isn't this up to date?
+                        var timer = Stopwatch.StartNew();
+                        while (sender.Position == _previousPosition
+                        && timer.ElapsedMilliseconds < 1000 / _framesPerSecond)
+                        {
+                            await Task.Yield();
+                        }
+                        _previousPosition = sender.Position;
+
                         _currentPosition = Math.Round(sender.Position.TotalSeconds * _framesPerSecond);
-                        sender.CopyFrameToVideoSurface(currentFrame);
+                        sender.CopyFrameToVideoSurface(_currentFrame);
+
+                        _canvasControl.Invalidate();
                     }
                     finally
                     {
-                        Monitor.Exit(currentFrame);
+                        _semaphore.Release();
                     }
-
-                    _canvasControl.Invalidate();
                 }
             };
         }
@@ -208,22 +211,31 @@ public sealed partial class MainWindow : Window
         args.DrawingSession.DrawImage(transform, new Rect(0, 0, bounds.Width, bounds.Height), bounds);
     }
 
+    void HandleSeek(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_currentFrame is null
+            || e.NewValue == _currentPosition)
+            return;
+
+        _player.Pause();
+        _player.Position = TimeSpan.FromSeconds(e.NewValue / _framesPerSecond);
+    }
+
     async void HandlePhoto(object sender, RoutedEventArgs e)
     {
         if (_currentFrame is null)
             return;
 
         string path;
-        var currentFrame = _currentFrame;
-        Monitor.Enter(currentFrame);
+        await _semaphore.WaitAsync();
         try
         {
             path = Path.Combine(_dir, _fileName + "." + _currentPosition + ".jpg");
-            await currentFrame.SaveAsync(path, CanvasBitmapFileFormat.Auto, 0.95f);
+            await _currentFrame.SaveAsync(path, CanvasBitmapFileFormat.Auto, 0.95f);
         }
         finally
         {
-            Monitor.Exit(currentFrame);
+            _semaphore.Release();
         }
 
         using (var stream = await FileRandomAccessStream.OpenAsync(path, FileAccessMode.ReadWrite))
@@ -282,6 +294,7 @@ public sealed partial class MainWindow : Window
         {
             case VirtualKey.Left:
                 // NB: StepBackwardOneFrame ignores FPS
+                _player.Pause();
                 _player.Position = TimeSpan.FromSeconds((_currentPosition - 1.0) / _framesPerSecond);
                 break;
 
@@ -334,15 +347,12 @@ public sealed partial class MainWindow : Window
 
     void HandlePointerMoved(object sender, PointerRoutedEventArgs e)
     {
+        if (!e.GetCurrentPoint(_scrollViewer).Properties.IsLeftButtonPressed)
+            _canvasControl.PointerMoved -= HandlePointerMoved;
+
         var currentPoint = e.GetCurrentPoint(_scrollViewer);
         _scrollViewer.ScrollToHorizontalOffset(_dragHorizontalOffset - (currentPoint.Position.X - _dragStartPosition.X));
         _scrollViewer.ScrollToVerticalOffset(_dragVerticalOffset - (currentPoint.Position.Y - _dragStartPosition.Y));
-    }
-
-    void HandlePointerReleased(object sender, PointerRoutedEventArgs e)
-    {
-        if (!e.GetCurrentPoint(_scrollViewer).Properties.IsLeftButtonPressed)
-            _canvasControl.PointerMoved -= HandlePointerMoved;
     }
 
     void UpdateMinZoomFactor()
