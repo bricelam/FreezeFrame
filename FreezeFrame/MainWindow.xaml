@@ -7,23 +7,19 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-  <Grid AllowDrop="True" DragOver="HandleDragOver" Drop="HandleDrop" KeyDown="HandleKeyDown">
+  <Grid KeyDown="HandleKeyDown">
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto" />
       <RowDefinition />
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
-    <MenuBar>
-      <MenuBarItem Title="File">
-        <MenuFlyoutItem Text="Open" Click="HandleOpen" />
-      </MenuBarItem>
-    </MenuBar>
-    <ScrollViewer Grid.Row="1"
-                  Name="_scrollViewer"
+    <ScrollViewer Name="_scrollViewer"
                   HorizontalScrollBarVisibility="Auto"
                   ZoomMode="Enabled"
                   MaxZoomFactor="1.0"
-                  SizeChanged="HandleSizeChanged">
+                  SizeChanged="HandleSizeChanged"
+                  AllowDrop="True"
+                  DragOver="HandleDragOver"
+                  Drop="HandleDrop">
       <canvas:CanvasControl Name="_canvasControl"
                             Draw="HandleDraw"
                             HorizontalAlignment="Left"
@@ -32,25 +28,16 @@
                             PointerPressed="HandlePointerPressed"
                             PointerReleased="HandlePointerReleased" />
     </ScrollViewer>
-    <Border Grid.Row="2" BorderBrush="{ThemeResource CommandBarBorderBrushOpen}" BorderThickness="0,1,0,0">
-      <Grid Height="116" Background="{ThemeResource CommandBarBackgroundOpen}">
-        <Grid.RowDefinitions>
-          <RowDefinition Height="32" />
-          <RowDefinition />
-        </Grid.RowDefinitions>
-        <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
-          <TextBlock>00:00:00</TextBlock>
-          <Slider Name="_slider" Grid.Column="1" />
-          <TextBlock Grid.Column="2">00:00:00</TextBlock>
-        </Grid>
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center">
+    <Border Grid.Row="1" BorderBrush="{ThemeResource CommandBarBorderBrushOpen}" BorderThickness="0,1,0,0">
+      <Grid Background="{ThemeResource CommandBarBackgroundOpen}">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <Slider Name="_slider" VerticalAlignment="Center" Margin="16,0,4,0" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,4,0">
           <AppBarButton Name="_playButton" Icon="Play" Label="Play" Click="HandlePlay" />
-          <AppBarButton Icon="Camera" Label="Take photo" Click="HandlePhoto" />
+          <AppBarButton Icon="Camera" Label="Save" Click="HandlePhoto" />
           <AppBarButton Icon="Rotate" Label="Rotate" Click="HandleRotate" />
         </StackPanel>
       </Grid>

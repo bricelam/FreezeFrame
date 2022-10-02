@@ -24,7 +24,10 @@ using Windows.Storage.FileProperties;
 using Windows.Storage.Pickers;
 using Windows.Storage.Streams;
 using Windows.System;
+using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
 using WinRT.Interop;
+using static Windows.Win32.PInvoke;
 
 namespace FreezeFrame;
 
@@ -33,7 +36,7 @@ public sealed partial class MainWindow : Window
     static readonly Guid VideoRotationProperty = new Guid("c380465d-2271-428c-9b83-ecea3b4a85c1");
 
     // TODO: Query codecs
-    static readonly string[] _knownExtensions = new[] { ".3g2", ".3gp", ".3gp2", ".3gpp", ".asf", ".avi", ".dvr-ms", ".m2t", ".m2ts", ".m4v", ".mkv", ".mod", ".mov", ".mp2v", ".mp4", ".mp4v", ".mpa", ".mpeg", ".mpg", ".mts", ".tod", ".tts", ".uvu", ".vob", ".webm", ".wm", ".wmv" };
+    static readonly HashSet<string> _knownExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".3g2", ".3gp", ".3gp2", ".3gpp", ".asf", ".avi", ".dvr-ms", ".m2t", ".m2ts", ".m4v", ".mkv", ".mod", ".mov", ".mp2v", ".mp4", ".mp4v", ".mpa", ".mpeg", ".mpg", ".mts", ".tod", ".tts", ".uvu", ".vob", ".webm", ".wm", ".wmv" };
 
     string _dir;
     string _fileName;
@@ -52,25 +55,18 @@ public sealed partial class MainWindow : Window
     Point _dragStartPosition;
 
     public MainWindow()
-        => InitializeComponent();
-
-    async void HandleOpen(object sender, RoutedEventArgs e)
     {
-        var picker = new FileOpenPicker
-        {
-            SuggestedStartLocation = PickerLocationId.PicturesLibrary
-        };
+        InitializeComponent();
 
-        foreach (var knownExtension in _knownExtensions)
-            picker.FileTypeFilter.Add(knownExtension);
+        Title = "Freeze Frame";
 
-        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+        var handle = (HWND)WindowNative.GetWindowHandle(this);
 
-        var file = await picker.PickSingleFileAsync();
-        if (file is null)
-            return;
-
-        await Open(file);
+        // Remove icon
+        var styleEx = GetWindowLong(handle, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+        SetWindowLong(handle, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, styleEx | (int)WINDOW_EX_STYLE.WS_EX_DLGMODALFRAME);
+        SendMessage(handle, WM_SETICON, ICON_SMALL, IntPtr.Zero);
+        SendMessage(handle, WM_SETICON, ICON_BIG, IntPtr.Zero);
     }
 
     async Task Open(StorageFile file)
@@ -165,13 +161,27 @@ public sealed partial class MainWindow : Window
         _player.Position = TimeSpan.Zero;
     }
 
-    void HandlePlay(object sender, RoutedEventArgs e)
+    async void HandlePlay(object sender, RoutedEventArgs e)
     {
         if (_currentFrame is null)
         {
-            return;
+            var picker = new FileOpenPicker
+            {
+                SuggestedStartLocation = PickerLocationId.PicturesLibrary
+            };
+
+            foreach (var knownExtension in _knownExtensions)
+                picker.FileTypeFilter.Add(knownExtension);
+
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+
+            var file = await picker.PickSingleFileAsync();
+            if (file is null)
+                return;
+
+            await Open(file);
         }
-        if (_player.CurrentState != MediaPlayerState.Playing)
+        else if (_player.CurrentState != MediaPlayerState.Playing)
         {
             _player.Play();
         }
@@ -216,25 +226,29 @@ public sealed partial class MainWindow : Window
             Monitor.Exit(currentFrame);
         }
 
-        using var stream = await FileRandomAccessStream.OpenAsync(path, FileAccessMode.ReadWrite);
-        var decoder = await BitmapDecoder.CreateAsync(stream);
-        var encoder = await BitmapEncoder.CreateForTranscodingAsync(stream, decoder);
-        await encoder.BitmapProperties.SetPropertiesAsync(
-            new Dictionary<string, BitmapTypedValue>
-            {
-                [SystemProperties.Photo.DateTaken] = new BitmapTypedValue(_dateTaken, PropertyType.DateTime),
-                [SystemProperties.Photo.Orientation] = new BitmapTypedValue(
-                    _orientation switch
-                    {
-                        // NB: Values don't align
-                        0u => PhotoOrientation.Normal,
-                        90u => PhotoOrientation.Rotate270,
-                        180u => PhotoOrientation.Rotate180,
-                        270u => PhotoOrientation.Rotate90
-                    },
-                    PropertyType.UInt16)
-            });
-        await encoder.FlushAsync();
+        using (var stream = await FileRandomAccessStream.OpenAsync(path, FileAccessMode.ReadWrite))
+        {
+            var decoder = await BitmapDecoder.CreateAsync(stream);
+            var encoder = await BitmapEncoder.CreateForTranscodingAsync(stream, decoder);
+            await encoder.BitmapProperties.SetPropertiesAsync(
+                new Dictionary<string, BitmapTypedValue>
+                {
+                    [SystemProperties.Photo.DateTaken] = new BitmapTypedValue(_dateTaken, PropertyType.DateTime),
+                    [SystemProperties.Photo.Orientation] = new BitmapTypedValue(
+                        _orientation switch
+                        {
+                            // TODO: Is this wrong? Account for the existing value?
+                            // NB: Values don't align
+                            0u => PhotoOrientation.Normal,
+                            90u => PhotoOrientation.Rotate270,
+                            180u => PhotoOrientation.Rotate180,
+                            270u => PhotoOrientation.Rotate90,
+                            _ => throw new Exception("Inconceivable!")
+                        },
+                        PropertyType.UInt16)
+                });
+            await encoder.FlushAsync();
+        }
 
         if (_geotag is not null)
         {
@@ -277,15 +291,8 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    async void HandleDragOver(object sender, DragEventArgs e)
+    void HandleDragOver(object sender, DragEventArgs e)
     {
-        if (!e.DataView.Contains(StandardDataFormats.StorageItems))
-            return;
-
-        var storageItems = await e.DataView.GetStorageItemsAsync();
-        if (!_knownExtensions.Contains(Path.GetExtension(storageItems[0].Path)))
-            return;
-
         e.AcceptedOperation = DataPackageOperation.Link;
         e.DragUIOverride.IsGlyphVisible = false;
         e.DragUIOverride.Caption = "Open";
@@ -297,8 +304,11 @@ public sealed partial class MainWindow : Window
             return;
 
         var storageItems = await e.DataView.GetStorageItemsAsync();
+        var storageItem = (StorageFile)storageItems[0];
+        if (!_knownExtensions.Contains(Path.GetExtension(storageItem.Path)))
+            return;
 
-        await Open((StorageFile)storageItems[0]);
+        await Open(storageItem);
     }
 
     void HandlePointerWheelChanged(object sender, PointerRoutedEventArgs e)
@@ -360,7 +370,7 @@ public sealed partial class MainWindow : Window
             => _framesPerSecond = framesPerSecond;
 
         public object Convert(object value, Type targetType, object parameter, string language)
-            => "Frame " + (double)value + " (" + TimeSpan.FromSeconds((double)value / _framesPerSecond).ToString(@"hh\:mm\:ss\.fff") + ")";
+            => value + " (" + TimeSpan.FromSeconds((double)value / _framesPerSecond).ToString(@"hh\:mm\:ss") + ")";
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)
             => throw new NotImplementedException();

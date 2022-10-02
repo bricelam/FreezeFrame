@@ -1,0 +1,9 @@
+﻿ICON_BIG
+ICON_SMALL
+WINDOW_LONG_PTR_INDEX
+WINDOW_EX_STYLE
+WM_SETICON
+
+SendMessage
+GetWindowLong
+SetWindowLong
