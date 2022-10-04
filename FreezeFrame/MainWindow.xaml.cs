@@ -6,6 +6,7 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNext.Threading;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Effects;
 using Microsoft.Graphics.Canvas.UI.Xaml;
@@ -55,7 +56,9 @@ public sealed partial class MainWindow : Window
     double _dragVerticalOffset;
     Point _dragStartPosition;
 
-    SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
+    AsyncReaderWriterLock _lock = new AsyncReaderWriterLock();
+
+    bool _ignoreSeek;
 
     public MainWindow()
     {
@@ -83,6 +86,8 @@ public sealed partial class MainWindow : Window
 
         var source = MediaSource.CreateFromStorageFile(file);
         await source.OpenAsync();
+
+        Title = _fileName + " - Freeze Frame";
 
         var playbackItem = new MediaPlaybackItem(source);
 
@@ -132,30 +137,23 @@ public sealed partial class MainWindow : Window
             };
             _player.VideoFrameAvailable += async (sender, args) =>
             {
-                if (_semaphore.CurrentCount != 0)
+                var timer = Stopwatch.StartNew();
+
+                using (await _lock.AcquireWriteLockAsync(CancellationToken.None))
                 {
-                    await _semaphore.WaitAsync();
-                    try
-                    {
-                        // HACK: Why isn't this up to date?
-                        var timer = Stopwatch.StartNew();
-                        while (sender.Position == _previousPosition
+                    // HACK: Why isn't this up to date?
+                    while (sender.Position == _previousPosition
                         && timer.ElapsedMilliseconds < 1000 / _framesPerSecond)
-                        {
-                            await Task.Yield();
-                        }
-                        _previousPosition = sender.Position;
-
-                        _currentPosition = Math.Round(sender.Position.TotalSeconds * _framesPerSecond);
-                        sender.CopyFrameToVideoSurface(_currentFrame);
-
-                        _canvasControl.Invalidate();
-                    }
-                    finally
                     {
-                        _semaphore.Release();
+                        await Task.Yield();
                     }
+                    _previousPosition = sender.Position;
+
+                    _currentPosition = Math.Round(sender.Position.TotalSeconds * _framesPerSecond);
+                    sender.CopyFrameToVideoSurface(_currentFrame);
                 }
+
+                _canvasControl.Invalidate();
             };
         }
 
@@ -199,7 +197,7 @@ public sealed partial class MainWindow : Window
         if (_currentFrame is null)
             return;
 
-        // TODO: Bind to player instead?
+        _ignoreSeek = true;
         _slider.Value = _currentPosition;
 
         var transform = new Transform2DEffect
@@ -207,15 +205,23 @@ public sealed partial class MainWindow : Window
             Source = _currentFrame,
             TransformMatrix = Matrix3x2.CreateRotation(MathF.PI * _orientation / 180f)
         };
-        var bounds = transform.GetBounds(sender);
-        args.DrawingSession.DrawImage(transform, new Rect(0, 0, bounds.Width, bounds.Height), bounds);
+
+        using (_lock.AcquireReadLock())
+        {
+            var bounds = transform.GetBounds(sender);
+            args.DrawingSession.DrawImage(transform, new Rect(0, 0, bounds.Width, bounds.Height), bounds);
+        }
     }
 
     void HandleSeek(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (_currentFrame is null
-            || e.NewValue == _currentPosition)
+            || _ignoreSeek)
+        {
+            _ignoreSeek = false;
+
             return;
+        }
 
         _player.Pause();
         _player.Position = TimeSpan.FromSeconds(e.NewValue / _framesPerSecond);
@@ -227,15 +233,10 @@ public sealed partial class MainWindow : Window
             return;
 
         string path;
-        await _semaphore.WaitAsync();
-        try
+        using (await _lock.AcquireReadLockAsync(CancellationToken.None))
         {
             path = Path.Combine(_dir, _fileName + "." + _currentPosition + ".jpg");
             await _currentFrame.SaveAsync(path, CanvasBitmapFileFormat.Auto, 0.95f);
-        }
-        finally
-        {
-            _semaphore.Release();
         }
 
         using (var stream = await FileRandomAccessStream.OpenAsync(path, FileAccessMode.ReadWrite))

@@ -15,6 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="DotNext.Threading" Version="4.7.2" />
     <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.0.3.1" />
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.2.63-beta">
       <PrivateAssets>all</PrivateAssets>
