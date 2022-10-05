@@ -15,6 +15,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Markup;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Devices.Geolocation;
 using Windows.Foundation;
@@ -58,7 +59,7 @@ public sealed partial class MainWindow : Window
 
     AsyncReaderWriterLock _lock = new AsyncReaderWriterLock();
 
-    bool _ignoreSeek;
+    List<double> _seeksToIgnore = new List<double>();
 
     public MainWindow()
     {
@@ -75,6 +76,25 @@ public sealed partial class MainWindow : Window
         SendMessage(handle, WM_SETICON, ICON_BIG, IntPtr.Zero);
     }
 
+    async void HandleOpen(object sender, RoutedEventArgs e)
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.PicturesLibrary
+        };
+
+        foreach (var knownExtension in _knownExtensions)
+            picker.FileTypeFilter.Add(knownExtension);
+
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+
+        var file = await picker.PickSingleFileAsync();
+        if (file is null)
+            return;
+
+        await Open(file);
+    }
+
     async Task Open(StorageFile file)
     {
         _dir = Path.GetDirectoryName(file.Path);
@@ -88,6 +108,7 @@ public sealed partial class MainWindow : Window
         await source.OpenAsync();
 
         Title = _fileName + " - Freeze Frame";
+        _welcome.Visibility = Visibility.Collapsed;
 
         var playbackItem = new MediaPlaybackItem(source);
 
@@ -165,24 +186,9 @@ public sealed partial class MainWindow : Window
     async void HandlePlay(object sender, RoutedEventArgs e)
     {
         if (_currentFrame is null)
-        {
-            var picker = new FileOpenPicker
-            {
-                SuggestedStartLocation = PickerLocationId.PicturesLibrary
-            };
+            return;
 
-            foreach (var knownExtension in _knownExtensions)
-                picker.FileTypeFilter.Add(knownExtension);
-
-            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
-
-            var file = await picker.PickSingleFileAsync();
-            if (file is null)
-                return;
-
-            await Open(file);
-        }
-        else if (_player.CurrentState != MediaPlayerState.Playing)
+        if (_player.CurrentState != MediaPlayerState.Playing)
         {
             _player.Play();
         }
@@ -197,7 +203,7 @@ public sealed partial class MainWindow : Window
         if (_currentFrame is null)
             return;
 
-        _ignoreSeek = true;
+        _seeksToIgnore.Add(_currentPosition);
         _slider.Value = _currentPosition;
 
         var transform = new Transform2DEffect
@@ -216,12 +222,12 @@ public sealed partial class MainWindow : Window
     void HandleSeek(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (_currentFrame is null
-            || _ignoreSeek)
+            || _seeksToIgnore.Remove(e.NewValue))
         {
-            _ignoreSeek = false;
-
             return;
         }
+
+        _seeksToIgnore.Clear();
 
         _player.Pause();
         _player.Position = TimeSpan.FromSeconds(e.NewValue / _framesPerSecond);
@@ -281,6 +287,27 @@ public sealed partial class MainWindow : Window
 
         (_canvasControl.Width, _canvasControl.Height) = (_canvasControl.Height, _canvasControl.Width);
         UpdateMinZoomFactor();
+    }
+
+    async void HandleTips(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "Tips",
+            Content = XamlReader.Load(@"
+              <TextBlock xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation"">
+                • Step through the video using <Bold>Left</Bold> and <Bold>Right</Bold><LineBreak />
+                • Zoom using <Bold>Ctrl</Bold> and the mouse wheel<LineBreak/>
+                • Scroll horizontally using <Bold>Shift</Bold> and the mouse wheel<LineBreak />
+                • Pictures are saved next to the video file
+              </TextBlock>
+            "),
+            CloseButtonText = "OK",
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        await dialog.ShowAsync();
     }
 
     void HandleSizeChanged(object sender, SizeChangedEventArgs e)

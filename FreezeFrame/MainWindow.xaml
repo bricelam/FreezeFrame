@@ -15,6 +15,13 @@
       <RowDefinition />
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
+    <Grid Name="_welcome">
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+        <TextBlock TextAlignment="Center">Drop video here</TextBlock>
+        <TextBlock TextAlignment="Center" Margin="0,4,0,0">or</TextBlock>
+        <Button Click="HandleOpen" HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}" Margin="0,8,0,0">Open file</Button>
+      </StackPanel>
+    </Grid>
     <ScrollViewer Name="_scrollViewer"
                   HorizontalScrollBarVisibility="Auto"
                   ZoomMode="Enabled"
@@ -33,11 +40,16 @@
           <ColumnDefinition />
           <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
-        <Slider Name="_slider" ValueChanged="HandleSeek" VerticalAlignment="Center" Margin="16,0,4,0" />
+        <Slider Name="_slider" ValueChanged="HandleSeek" VerticalAlignment="Center" Margin="24,0,4,0" />
         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,4,0">
           <AppBarButton Name="_playButton" Icon="Play" Label="Play" Click="HandlePlay" />
           <AppBarButton Icon="Camera" Label="Save" Click="HandlePhoto" />
           <AppBarButton Icon="Rotate" Label="Rotate" Click="HandleRotate" />
+          <AppBarButton Label="Tips" Click="HandleTips">
+            <AppBarButton.Icon>
+              <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xEA80;"/>
+            </AppBarButton.Icon>
+          </AppBarButton>
         </StackPanel>
       </Grid>
     </Border>
