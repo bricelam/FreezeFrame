@@ -7,6 +7,7 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNext.Threading;
+using FreezeFrame.Properties;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Effects;
 using Microsoft.Graphics.Canvas.UI.Xaml;
@@ -28,9 +29,9 @@ using Windows.Storage.Pickers;
 using Windows.Storage.Streams;
 using Windows.System;
 using Windows.Win32.Foundation;
-using Windows.Win32.UI.WindowsAndMessaging;
 using WinRT.Interop;
 using static Windows.Win32.PInvoke;
+using Icon = System.Drawing.Icon;
 
 namespace FreezeFrame;
 
@@ -69,11 +70,13 @@ public sealed partial class MainWindow : Window
 
         var handle = (HWND)WindowNative.GetWindowHandle(this);
 
-        // Remove icon
-        var styleEx = GetWindowLong(handle, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
-        SetWindowLong(handle, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, styleEx | (int)WINDOW_EX_STYLE.WS_EX_DLGMODALFRAME);
-        SendMessage(handle, WM_SETICON, ICON_SMALL, IntPtr.Zero);
-        SendMessage(handle, WM_SETICON, ICON_BIG, IntPtr.Zero);
+        // Set icon
+        using var stream = new MemoryStream(Resources.FreezeFrameIcon);
+        var smallIcon = new Icon(stream, 16, 16);
+        SendMessage(handle, WM_SETICON, ICON_SMALL, smallIcon.Handle);
+        stream.Seek(0, SeekOrigin.Begin);
+        var bigIcon = new Icon(stream, 32, 32);
+        SendMessage(handle, WM_SETICON, ICON_BIG, bigIcon.Handle);
     }
 
     async void HandleOpen(object sender, RoutedEventArgs e)
@@ -183,7 +186,7 @@ public sealed partial class MainWindow : Window
         _player.Position = TimeSpan.Zero;
     }
 
-    async void HandlePlay(object sender, RoutedEventArgs e)
+    void HandlePlay(object sender, RoutedEventArgs e)
     {
         if (_currentFrame is null)
             return;
@@ -299,6 +302,7 @@ public sealed partial class MainWindow : Window
               <TextBlock xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation"">
                 • Step through the video using <Bold>Left</Bold> and <Bold>Right</Bold><LineBreak />
                 • Zoom using <Bold>Ctrl</Bold> and the mouse wheel<LineBreak/>
+                • Click and drag to pan<LineBreak/>
                 • Scroll horizontally using <Bold>Shift</Bold> and the mouse wheel<LineBreak />
                 • Pictures are saved next to the video file
               </TextBlock>
