@@ -394,11 +394,14 @@ public sealed partial class MainWindow : Window
 
         var previousMinZoomFactor = _scrollViewer.MinZoomFactor;
 
-        _scrollViewer.MinZoomFactor = (float)Math.Min(
+
+        _scrollViewer.MinZoomFactor = (float)Math.Max(
             Math.Min(
-                _scrollViewer.ViewportWidth / _canvasControl.Width,
-                _scrollViewer.ViewportHeight / _canvasControl.Height),
-            1.0);
+                Math.Min(
+                    _scrollViewer.ViewportWidth / _canvasControl.Width,
+                    _scrollViewer.ViewportHeight / _canvasControl.Height),
+                1.0),
+            0.1);
 
         if (_scrollViewer.ZoomFactor == previousMinZoomFactor)
             _scrollViewer.ZoomToFactor(_scrollViewer.MinZoomFactor);
