@@ -15,13 +15,6 @@
       <RowDefinition />
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
-    <Grid Name="_welcome">
-      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-        <TextBlock TextAlignment="Center">Drop video here</TextBlock>
-        <TextBlock TextAlignment="Center" Margin="0,4,0,0">or</TextBlock>
-        <Button Click="HandleOpen" HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}" Margin="0,8,0,0">Open file</Button>
-      </StackPanel>
-    </Grid>
     <ScrollViewer Name="_scrollViewer"
                   HorizontalScrollBarVisibility="Auto"
                   ZoomMode="Enabled"
@@ -34,6 +27,13 @@
                             PointerWheelChanged="HandlePointerWheelChanged"
                             PointerPressed="HandlePointerPressed" />
     </ScrollViewer>
+    <Grid Name="_welcome">
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+        <TextBlock TextAlignment="Center">Drop video here</TextBlock>
+        <TextBlock TextAlignment="Center" Margin="0,4,0,0">or</TextBlock>
+        <Button Click="HandleOpen" HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}" Margin="0,8,0,0">Open file</Button>
+      </StackPanel>
+    </Grid>
     <Border Grid.Row="1" BorderBrush="{ThemeResource CommandBarBorderBrushOpen}" BorderThickness="0,1,0,0">
       <Grid Background="{ThemeResource CommandBarBackgroundOpen}">
         <Grid.ColumnDefinitions>
