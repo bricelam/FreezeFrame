@@ -1,5 +1,8 @@
 {
   "profiles": {
+    "FreezeFrame (Package)": {
+      "commandName": "MsixPackage"
+    },
     "FreezeFrame (Unpackaged)": {
       "commandName": "Project"
     }
