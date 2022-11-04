@@ -1,12 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Threading;
 using System.Threading.Tasks;
-using DotNext.Threading;
 using FreezeFrame.Properties;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Effects;
@@ -58,9 +55,7 @@ public sealed partial class MainWindow : Window
     double _dragVerticalOffset;
     Point _dragStartPosition;
 
-    AsyncReaderWriterLock _lock = new AsyncReaderWriterLock();
-
-    List<double> _seeksToIgnore = new List<double>();
+    bool _rendering;
 
     public MainWindow()
     {
@@ -131,7 +126,7 @@ public sealed partial class MainWindow : Window
         _orientation = 0u;
 
         _currentFrame?.Dispose();
-        _currentFrame = new CanvasRenderTarget(_canvasControl, (float)_canvasControl.Width, (float)_canvasControl.Height, 96f);
+        _currentFrame = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), (float)_canvasControl.Width, (float)_canvasControl.Height, 96f);
 
         if (_player is null)
         {
@@ -161,23 +156,29 @@ public sealed partial class MainWindow : Window
             };
             _player.VideoFrameAvailable += async (sender, args) =>
             {
-                var timer = Stopwatch.StartNew();
+                if (_rendering)
+                    return;
 
-                using (await _lock.AcquireWriteLockAsync(CancellationToken.None))
+                _rendering = true;
+                try
                 {
+                    sender.CopyFrameToVideoSurface(_currentFrame);
+
                     // HACK: Why isn't this up to date?
-                    while (sender.Position == _previousPosition
-                        && timer.ElapsedMilliseconds < 1000 / _framesPerSecond)
+                    while (sender.Position == _previousPosition)
                     {
                         await Task.Yield();
                     }
                     _previousPosition = sender.Position;
 
                     _currentPosition = Math.Round(sender.Position.TotalSeconds * _framesPerSecond);
-                    sender.CopyFrameToVideoSurface(_currentFrame);
-                }
 
-                _canvasControl.Invalidate();
+                    _canvasControl.Invalidate();
+                }
+                finally
+                {
+                    _rendering = false;
+                }
             };
         }
 
@@ -206,8 +207,21 @@ public sealed partial class MainWindow : Window
         if (_currentFrame is null)
             return;
 
-        _seeksToIgnore.Add(_currentPosition);
-        _slider.Value = _currentPosition;
+        if (_slider.Value != _currentPosition)
+        {
+            _slider.ValueChanged -= HandleSeek;
+            _slider.Value = _currentPosition;
+            _slider.ValueChanged += HandleSeek;
+        }
+
+        var ds = args.DrawingSession;
+
+        if (_orientation == 0u)
+        {
+            ds.DrawImage(_currentFrame);
+
+            return;
+        }
 
         var transform = new Transform2DEffect
         {
@@ -215,22 +229,14 @@ public sealed partial class MainWindow : Window
             TransformMatrix = Matrix3x2.CreateRotation(MathF.PI * _orientation / 180f)
         };
 
-        using (_lock.AcquireReadLock())
-        {
-            var bounds = transform.GetBounds(sender);
-            args.DrawingSession.DrawImage(transform, new Rect(0, 0, bounds.Width, bounds.Height), bounds);
-        }
+        var bounds = transform.GetBounds(ds);
+        ds.DrawImage(transform, new Rect(0, 0, bounds.Width, bounds.Height), bounds);
     }
 
     void HandleSeek(object sender, RangeBaseValueChangedEventArgs e)
     {
-        if (_currentFrame is null
-            || _seeksToIgnore.Remove(e.NewValue))
-        {
+        if (_currentFrame is null)
             return;
-        }
-
-        _seeksToIgnore.Clear();
 
         _player.Pause();
         _player.Position = TimeSpan.FromSeconds(e.NewValue / _framesPerSecond);
@@ -241,12 +247,8 @@ public sealed partial class MainWindow : Window
         if (_currentFrame is null)
             return;
 
-        string path;
-        using (await _lock.AcquireReadLockAsync(CancellationToken.None))
-        {
-            path = Path.Combine(_dir, _fileName + "." + _currentPosition + ".jpg");
-            await _currentFrame.SaveAsync(path, CanvasBitmapFileFormat.Auto, 0.95f);
-        }
+        var path = Path.Combine(_dir, _fileName + "." + _currentPosition + ".jpg");
+        await _currentFrame.SaveAsync(path, CanvasBitmapFileFormat.Auto, 0.95f);
 
         using (var stream = await FileRandomAccessStream.OpenAsync(path, FileAccessMode.ReadWrite))
         {
@@ -259,7 +261,6 @@ public sealed partial class MainWindow : Window
                     [SystemProperties.Photo.Orientation] = new BitmapTypedValue(
                         _orientation switch
                         {
-                            // TODO: Is this wrong? Account for the existing value?
                             // NB: Values don't align
                             0u => PhotoOrientation.Normal,
                             90u => PhotoOrientation.Rotate270,
@@ -327,11 +328,15 @@ public sealed partial class MainWindow : Window
             case VirtualKey.Left:
                 // NB: StepBackwardOneFrame ignores FPS
                 _player.Pause();
-                _player.Position = TimeSpan.FromSeconds((_currentPosition - 1.0) / _framesPerSecond);
+                _player.Position = TimeSpan.FromSeconds(
+                    (Math.Round(_player.Position.TotalSeconds * _framesPerSecond) - 1.0) / _framesPerSecond);
                 break;
 
             case VirtualKey.Right:
-                _player.StepForwardOneFrame();
+                // NB: StepForwardOneFrame causes a big jump when resuming playback
+                _player.Pause();
+                _player.Position = TimeSpan.FromSeconds(
+                    (Math.Round(_player.Position.TotalSeconds * _framesPerSecond) + 1.0) / _framesPerSecond);
                 break;
         }
     }
@@ -380,7 +385,11 @@ public sealed partial class MainWindow : Window
     void HandlePointerMoved(object sender, PointerRoutedEventArgs e)
     {
         if (!e.GetCurrentPoint(_scrollViewer).Properties.IsLeftButtonPressed)
+        {
             _canvasControl.PointerMoved -= HandlePointerMoved;
+
+            return;
+        }
 
         var currentPoint = e.GetCurrentPoint(_scrollViewer);
         _scrollViewer.ScrollToHorizontalOffset(_dragHorizontalOffset - (currentPoint.Position.X - _dragStartPosition.X));
