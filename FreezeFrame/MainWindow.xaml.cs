@@ -98,8 +98,8 @@ public sealed partial class MainWindow : Window
         _dir = Path.GetDirectoryName(file.Path);
         _fileName = Path.GetFileNameWithoutExtension(file.Path);
 
-        var imageProperties = await file.Properties.GetImagePropertiesAsync();
-        _dateTaken = imageProperties.DateTaken;
+        var basicProperties = await file.GetBasicPropertiesAsync();
+        _dateTaken = basicProperties.ItemDate;
         _geotag = await GeotagHelper.GetGeotagAsync(file);
 
         var source = MediaSource.CreateFromStorageFile(file);
@@ -257,7 +257,9 @@ public sealed partial class MainWindow : Window
             await encoder.BitmapProperties.SetPropertiesAsync(
                 new Dictionary<string, BitmapTypedValue>
                 {
-                    [SystemProperties.Photo.DateTaken] = new BitmapTypedValue(_dateTaken, PropertyType.DateTime),
+                    [SystemProperties.Photo.DateTaken] = new BitmapTypedValue(
+                        _dateTaken + TimeSpan.FromSeconds(_currentPosition / _framesPerSecond),
+                        PropertyType.DateTime),
                     [SystemProperties.Photo.Orientation] = new BitmapTypedValue(
                         _orientation switch
                         {
