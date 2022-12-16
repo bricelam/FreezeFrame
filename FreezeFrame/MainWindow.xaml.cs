@@ -328,17 +328,11 @@ public sealed partial class MainWindow : Window
         switch (e.Key)
         {
             case VirtualKey.Left:
-                // NB: StepBackwardOneFrame ignores FPS
-                _player.Pause();
-                _player.Position = TimeSpan.FromSeconds(
-                    (Math.Round(_player.Position.TotalSeconds * _framesPerSecond) - 1.0) / _framesPerSecond);
+                _player.StepBackwardOneFrame();
                 break;
 
             case VirtualKey.Right:
-                // NB: StepForwardOneFrame causes a big jump when resuming playback
-                _player.Pause();
-                _player.Position = TimeSpan.FromSeconds(
-                    (Math.Round(_player.Position.TotalSeconds * _framesPerSecond) + 1.0) / _framesPerSecond);
+                _player.StepForwardOneFrame();
                 break;
         }
     }
