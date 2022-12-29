@@ -1,13 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using FreezeFrame.Properties;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Effects;
 using Microsoft.Graphics.Canvas.UI.Xaml;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -43,6 +46,8 @@ public sealed partial class MainWindow : Window
     string _fileName;
     DateTimeOffset _dateTaken;
     Geopoint _geotag;
+    float _width;
+    float _height;
     uint _orientation;
 
     double _framesPerSecond;
@@ -56,6 +61,7 @@ public sealed partial class MainWindow : Window
     Point _dragStartPosition;
 
     bool _rendering;
+    Stopwatch _rateLimitTimer = Stopwatch.StartNew();
 
     public MainWindow()
     {
@@ -116,6 +122,8 @@ public sealed partial class MainWindow : Window
         (_canvasControl.Width, _canvasControl.Height) = orientation == 0u || orientation == 180u
             ? (videoProperties.Width, videoProperties.Height)
             : (videoProperties.Height, videoProperties.Width);
+        _width = (float)_canvasControl.Width;
+        _height = (float)_canvasControl.Height;
         _scrollViewer.ZoomToFactor(_scrollViewer.MinZoomFactor);
         UpdateMinZoomFactor();
 
@@ -126,7 +134,7 @@ public sealed partial class MainWindow : Window
         _orientation = 0u;
 
         _currentFrame?.Dispose();
-        _currentFrame = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), (float)_canvasControl.Width, (float)_canvasControl.Height, 96f);
+        _currentFrame = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), _width, _height, 96f);
 
         if (_player is null)
         {
@@ -157,12 +165,29 @@ public sealed partial class MainWindow : Window
             _player.VideoFrameAvailable += async (sender, args) =>
             {
                 if (_rendering)
+                {
+                    Debug.WriteLine("Too fast!");
+
                     return;
+                }
 
                 _rendering = true;
                 try
                 {
-                    sender.CopyFrameToVideoSurface(_currentFrame);
+                    try
+                    {
+                        sender.CopyFrameToVideoSurface(_currentFrame);
+                    }
+                    catch (COMException ex) when (_currentFrame.Device.IsDeviceLost(ex.ErrorCode))
+                    {
+                        Debug.Write("Device lost!");
+
+                        _currentFrame.Dispose();
+                        _currentFrame = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), _width, _height, 96f);
+                        sender.CopyFrameToVideoSurface(_currentFrame);
+
+                        return;
+                    }
 
                     // HACK: Why isn't this up to date?
                     while (sender.Position == _previousPosition)
@@ -328,11 +353,13 @@ public sealed partial class MainWindow : Window
         switch (e.Key)
         {
             case VirtualKey.Left:
-                _player.StepBackwardOneFrame();
+                if (!IsRateLimited())
+                    _player.StepBackwardOneFrame();
                 break;
 
             case VirtualKey.Right:
-                _player.StepForwardOneFrame();
+                if (!IsRateLimited())
+                    _player.StepForwardOneFrame();
                 break;
         }
     }
@@ -410,6 +437,18 @@ public sealed partial class MainWindow : Window
 
         if (_scrollViewer.ZoomFactor == previousMinZoomFactor)
             _scrollViewer.ZoomToFactor(_scrollViewer.MinZoomFactor);
+    }
+
+    bool IsRateLimited()
+    {
+        if (_rateLimitTimer.Elapsed.TotalSeconds < 1.0 / _framesPerSecond)
+        {
+            return true;
+        }
+
+        _rateLimitTimer.Restart();
+
+        return false;
     }
 
     class TimeSpanFormatter : IValueConverter
