@@ -1,22 +1,21 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Numerics;
-using System.Runtime.InteropServices;
-using System.Threading.Tasks;
-using FreezeFrame.Properties;
+﻿using FreezeFrame.Properties;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Effects;
+using Microsoft.Graphics.Canvas.UI;
 using Microsoft.Graphics.Canvas.UI.Xaml;
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Markup;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Numerics;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Devices.Geolocation;
 using Windows.Foundation;
@@ -37,10 +36,10 @@ namespace FreezeFrame;
 
 public sealed partial class MainWindow : Window
 {
-    static readonly Guid VideoRotationProperty = new Guid("c380465d-2271-428c-9b83-ecea3b4a85c1");
+    static readonly Guid VideoRotationProperty = new("c380465d-2271-428c-9b83-ecea3b4a85c1");
 
     // TODO: Query codecs
-    static readonly HashSet<string> _knownExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".3g2", ".3gp", ".3gp2", ".3gpp", ".asf", ".avi", ".dvr-ms", ".m2t", ".m2ts", ".m4v", ".mkv", ".mod", ".mov", ".mp2v", ".mp4", ".mp4v", ".mpa", ".mpeg", ".mpg", ".mts", ".tod", ".tts", ".uvu", ".vob", ".webm", ".wm", ".wmv" };
+    static readonly HashSet<string> _knownExtensions = new(StringComparer.OrdinalIgnoreCase) { ".3g2", ".3gp", ".3gp2", ".3gpp", ".asf", ".avi", ".dvr-ms", ".m2t", ".m2ts", ".m4v", ".mkv", ".mod", ".mov", ".mp2v", ".mp4", ".mp4v", ".mpa", ".mpeg", ".mpg", ".mts", ".tod", ".tts", ".uvu", ".vob", ".webm", ".wm", ".wmv" };
 
     string _dir;
     string _fileName;
@@ -61,7 +60,7 @@ public sealed partial class MainWindow : Window
     Point _dragStartPosition;
 
     bool _rendering;
-    Stopwatch _rateLimitTimer = Stopwatch.StartNew();
+    readonly Stopwatch _rateLimitTimer = Stopwatch.StartNew();
 
     public MainWindow()
     {
@@ -116,7 +115,7 @@ public sealed partial class MainWindow : Window
 
         var playbackItem = new MediaPlaybackItem(source);
 
-        var videoProperties = playbackItem.VideoTracks.First().GetEncodingProperties();
+        var videoProperties = playbackItem.VideoTracks[0].GetEncodingProperties();
 
         var orientation = (uint)videoProperties.Properties[VideoRotationProperty];
         (_canvasControl.Width, _canvasControl.Height) = orientation == 0u || orientation == 180u
@@ -134,7 +133,7 @@ public sealed partial class MainWindow : Window
         _orientation = 0u;
 
         _currentFrame?.Dispose();
-        _currentFrame = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), _width, _height, 96f);
+        _currentFrame = new CanvasRenderTarget(_canvasControl, _width, _height, 96f);
 
         if (_player is null)
         {
@@ -174,19 +173,33 @@ public sealed partial class MainWindow : Window
                 _rendering = true;
                 try
                 {
-                    try
+                    var copied = false;
+                    while (!copied)
                     {
-                        sender.CopyFrameToVideoSurface(_currentFrame);
-                    }
-                    catch (COMException ex) when (_currentFrame.Device.IsDeviceLost(ex.ErrorCode))
-                    {
-                        Debug.Write("Device lost!");
+                        try
+                        {
+                            sender.CopyFrameToVideoSurface(_currentFrame);
+                            copied = true;
+                        }
+                        catch (COMException ex) when (_currentFrame.Device.IsDeviceLost(ex.ErrorCode))
+                        {
+                            Debug.WriteLine("Device lost! " + ex.Message);
 
-                        _currentFrame.Dispose();
-                        _currentFrame = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), _width, _height, 96f);
-                        sender.CopyFrameToVideoSurface(_currentFrame);
-
-                        return;
+                            var recreated = false;
+                            while (!recreated)
+                            {
+                                try
+                                {
+                                    _currentFrame.Dispose();
+                                    _currentFrame = new CanvasRenderTarget(_canvasControl, _width, _height, 96f);
+                                    recreated = true;
+                                }
+                                catch (Exception ex2)
+                                {
+                                    Debug.WriteLine("Device lost again! (" + _canvasControl.Device.IsDeviceLost(ex2.HResult) + ") " + ex2.Message);
+                                }
+                            }
+                        }
                     }
 
                     // HACK: Why isn't this up to date?
@@ -224,6 +237,15 @@ public sealed partial class MainWindow : Window
         else
         {
             _player.Pause();
+        }
+    }
+
+    void HandleCreateResources(CanvasControl sender, CanvasCreateResourcesEventArgs args)
+    {
+        if (_currentFrame is not null)
+        {
+            _currentFrame.Dispose();
+            _currentFrame = new CanvasRenderTarget(_canvasControl, _width, _height, 96f);
         }
     }
 

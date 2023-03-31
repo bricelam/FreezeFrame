@@ -1,18 +1,17 @@
 ﻿using Microsoft.UI.Xaml;
 
-namespace FreezeFrame
+namespace FreezeFrame;
+
+public partial class App : Application
 {
-    public partial class App : Application
+    Window _window;
+
+    public App()
+        => InitializeComponent();
+
+    protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        Window _window;
-
-        public App()
-            => InitializeComponent();
-
-        protected override void OnLaunched(LaunchActivatedEventArgs args)
-        {
-            _window = new MainWindow();
-            _window.Activate();
-        }
+        _window = new MainWindow();
+        _window.Activate();
     }
 }
