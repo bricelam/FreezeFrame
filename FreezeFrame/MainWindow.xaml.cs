@@ -8,6 +8,7 @@ using FreezeFrame.Properties;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Effects;
 using Microsoft.Graphics.Canvas.UI.Xaml;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -25,6 +26,7 @@ using Windows.Storage.FileProperties;
 using Windows.Storage.Pickers;
 using Windows.Storage.Streams;
 using Windows.System;
+using Windows.UI.Core;
 using Windows.Win32.Foundation;
 using WinRT.Interop;
 using static Windows.Win32.PInvoke;
@@ -48,6 +50,7 @@ public sealed partial class MainWindow : Window
     uint _orientation;
 
     double _framesPerSecond;
+    double _finalFrame;
     TimeSpan _previousPosition = TimeSpan.MinValue;
     double _currentPosition;
     CanvasRenderTarget _currentFrame;
@@ -78,6 +81,9 @@ public sealed partial class MainWindow : Window
     }
 
     async void HandleOpen(object sender, RoutedEventArgs e)
+        => await Open();
+
+    async Task Open()
     {
         var picker = new FileOpenPicker
         {
@@ -125,7 +131,8 @@ public sealed partial class MainWindow : Window
         UpdateMinZoomFactor();
 
         _framesPerSecond = (double)videoProperties.FrameRate.Numerator / videoProperties.FrameRate.Denominator;
-        _slider.Maximum = Math.Round(source.Duration.Value.TotalSeconds * _framesPerSecond) - 1.0;
+        _finalFrame = Math.Round(source.Duration.Value.TotalSeconds * _framesPerSecond) - 1.0;
+        _slider.Maximum = _finalFrame;
         _slider.ThumbToolTipValueConverter = new TimeSpanFormatter(_framesPerSecond);
 
         _orientation = 0u;
@@ -260,6 +267,9 @@ public sealed partial class MainWindow : Window
     }
 
     async void HandlePhoto(object sender, RoutedEventArgs e)
+        => await SavePhotoAsync();
+
+    async Task SavePhotoAsync()
     {
         if (_currentFrame is null)
             return;
@@ -323,8 +333,8 @@ public sealed partial class MainWindow : Window
                 • Step through the video using <Bold>Left</Bold> and <Bold>Right</Bold><LineBreak />
                 • Zoom using <Bold>Ctrl</Bold> and the mouse wheel<LineBreak/>
                 • Click and drag to pan<LineBreak/>
-                • Scroll horizontally using <Bold>Shift</Bold> and the mouse wheel<LineBreak />
-                • Pictures are saved next to the video file
+                • Pictures are saved next to the video file<LineBreak />
+                • Go to a specific frame using <Bold>Ctrl+G</Bold>
               </TextBlock>
             "),
             CloseButtonText = "OK",
@@ -337,7 +347,7 @@ public sealed partial class MainWindow : Window
     void HandleSizeChanged(object sender, SizeChangedEventArgs e)
         => UpdateMinZoomFactor();
 
-    void HandleKeyDown(object sender, KeyRoutedEventArgs e)
+    async void HandleKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (_currentFrame is null)
             return;
@@ -353,7 +363,44 @@ public sealed partial class MainWindow : Window
                 if (!IsRateLimited())
                     _player.StepForwardOneFrame();
                 break;
+
+            case VirtualKey.G when IsControlDown():
+                _player.Pause();
+                var frameNumberBox = new NumberBox
+                {
+                    Header = "Frame number",
+                    Value = _currentPosition,
+                    Minimum = 0.0,
+                    Maximum = _finalFrame
+                };
+                var dialog = new ContentDialog
+                {
+                    XamlRoot = Content.XamlRoot,
+                    Title = "Go to frame",
+                    Content = frameNumberBox,
+                    PrimaryButtonText = "Go to",
+                    CloseButtonText = "Cancel",
+                    DefaultButton = ContentDialogButton.Primary
+                };
+                var result = await dialog.ShowAsync();
+                if (result == ContentDialogResult.Primary)
+                {
+                    _player.Position = TimeSpan.FromSeconds(frameNumberBox.Value / _framesPerSecond);
+                }
+                break;
+
+            case VirtualKey.O when IsControlDown():
+                _player.Pause();
+                await Open();
+                break;
+
+            case VirtualKey.S when IsControlDown():
+                await SavePhotoAsync();
+                break;
         }
+
+        static bool IsControlDown()
+            => InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control).HasFlag(CoreVirtualKeyStates.Down);
     }
 
     void HandleDragOver(object sender, DragEventArgs e)
