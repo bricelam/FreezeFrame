@@ -1,7 +1,12 @@
-﻿using FreezeFrame.Properties;
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Numerics;
+using System.Threading.Tasks;
+using FreezeFrame.Properties;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Effects;
-using Microsoft.Graphics.Canvas.UI;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -9,13 +14,6 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Markup;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Numerics;
-using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Devices.Geolocation;
 using Windows.Foundation;
@@ -133,7 +131,7 @@ public sealed partial class MainWindow : Window
         _orientation = 0u;
 
         _currentFrame?.Dispose();
-        _currentFrame = new CanvasRenderTarget(_canvasControl, _width, _height, 96f);
+        _currentFrame = null;
 
         if (_player is null)
         {
@@ -144,7 +142,7 @@ public sealed partial class MainWindow : Window
             };
             _player.CurrentStateChanged += (sender, args) =>
             {
-                if (sender.CurrentState == MediaPlayerState.Playing)
+                if (_player.CurrentState == MediaPlayerState.Playing)
                 {
                     DispatcherQueue.TryEnqueue(() =>
                     {
@@ -173,45 +171,26 @@ public sealed partial class MainWindow : Window
                 _rendering = true;
                 try
                 {
-                    var copied = false;
-                    while (!copied)
-                    {
-                        try
-                        {
-                            sender.CopyFrameToVideoSurface(_currentFrame);
-                            copied = true;
-                        }
-                        catch (COMException ex) when (_currentFrame.Device.IsDeviceLost(ex.ErrorCode))
-                        {
-                            Debug.WriteLine("Device lost! " + ex.Message);
-
-                            var recreated = false;
-                            while (!recreated)
-                            {
-                                try
-                                {
-                                    _currentFrame.Dispose();
-                                    _currentFrame = new CanvasRenderTarget(_canvasControl, _width, _height, 96f);
-                                    recreated = true;
-                                }
-                                catch (Exception ex2)
-                                {
-                                    Debug.WriteLine("Device lost again! (" + _canvasControl.Device.IsDeviceLost(ex2.HResult) + ") " + ex2.Message);
-                                }
-                            }
-                        }
-                    }
-
                     // HACK: Why isn't this up to date?
-                    while (sender.Position == _previousPosition)
+                    while (_player.Position == _previousPosition)
                     {
                         await Task.Yield();
                     }
-                    _previousPosition = sender.Position;
+                    _previousPosition = _player.Position;
 
-                    _currentPosition = Math.Round(sender.Position.TotalSeconds * _framesPerSecond);
+                    var canvasDevice = CanvasDevice.GetSharedDevice();
+                    var position = _player.Position;
 
-                    _canvasControl.Invalidate();
+                    DispatcherQueue?.TryEnqueue(() =>
+                    {
+                        _currentFrame ??= new CanvasRenderTarget(canvasDevice, _width, _height, 96f);
+
+                        _player.CopyFrameToVideoSurface(_currentFrame);
+
+                        _currentPosition = Math.Round(position.TotalSeconds * _framesPerSecond);
+
+                        _canvasControl.Invalidate();
+                    });
                 }
                 finally
                 {
@@ -237,15 +216,6 @@ public sealed partial class MainWindow : Window
         else
         {
             _player.Pause();
-        }
-    }
-
-    void HandleCreateResources(CanvasControl sender, CanvasCreateResourcesEventArgs args)
-    {
-        if (_currentFrame is not null)
-        {
-            _currentFrame.Dispose();
-            _currentFrame = new CanvasRenderTarget(_canvasControl, _width, _height, 96f);
         }
     }
 

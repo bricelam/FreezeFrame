@@ -21,7 +21,6 @@
                   ZoomMode="Enabled">
       <canvas:CanvasControl HorizontalAlignment="Left"
                             VerticalAlignment="Top"
-                            CreateResources="HandleCreateResources"
                             Draw="HandleDraw"
                             Name="_canvasControl"
                             PointerPressed="HandlePointerPressed"
