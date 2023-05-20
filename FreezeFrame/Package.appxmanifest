@@ -9,7 +9,7 @@
   <Identity
     Name="9537b5a7-8abc-4ac8-8e74-97ab78751317"
     Publisher="E=brice@bricelam.net, CN=&quot;Open Source Developer, Brice Lambson&quot;, O=Open Source Developer, S=Washington, C=US"
-    Version="1.1.0.0" />
+    Version="1.1.1.0" />
 
   <Properties>
     <DisplayName>Freeze Frame</DisplayName>
