@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<AppInstaller
+	Uri="https://www.bricelam.net/FreezeFrame/FreezeFrame_x64.appinstaller"
+	Version="1.1.0.0" xmlns="http://schemas.microsoft.com/appx/appinstaller/2017/2">
+	<MainPackage
+		Name="9537b5a7-8abc-4ac8-8e74-97ab78751317"
+		Version="1.1.0.0"
+		Publisher="E=brice@bricelam.net, CN=&quot;Open Source Developer, Brice Lambson&quot;, O=Open Source Developer, S=Washington, C=US"
+		Uri="https://github.com/bricelam/FreezeFrame/releases/download/1.1.0/FreezeFrame_1.1.0.0_x64.msix"
+		ProcessorArchitecture="x64" />
+	<UpdateSettings>
+		<OnLaunch
+			HoursBetweenUpdateChecks="0" />
+	</UpdateSettings>
+</AppInstaller>
