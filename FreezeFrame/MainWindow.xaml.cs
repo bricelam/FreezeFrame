@@ -41,10 +41,10 @@ public sealed partial class MainWindow : Window
     // TODO: Query codecs
     static readonly HashSet<string> _knownExtensions = new(StringComparer.OrdinalIgnoreCase) { ".3g2", ".3gp", ".3gp2", ".3gpp", ".asf", ".avi", ".dvr-ms", ".m2t", ".m2ts", ".m4v", ".mkv", ".mod", ".mov", ".mp2v", ".mp4", ".mp4v", ".mpa", ".mpeg", ".mpg", ".mts", ".tod", ".tts", ".uvu", ".vob", ".webm", ".wm", ".wmv" };
 
-    string _dir;
-    string _fileName;
+    string? _dir;
+    string? _fileName;
     DateTimeOffset _dateTaken;
-    Geopoint _geotag;
+    Geopoint? _geotag;
     float _width;
     float _height;
     uint _orientation;
@@ -53,8 +53,8 @@ public sealed partial class MainWindow : Window
     double _finalFrame;
     TimeSpan _previousPosition = TimeSpan.MinValue;
     double _currentPosition;
-    CanvasRenderTarget _currentFrame;
-    MediaPlayer _player;
+    CanvasRenderTarget? _currentFrame;
+    MediaPlayer? _player;
 
     double _dragHorizontalOffset;
     double _dragVerticalOffset;
@@ -131,7 +131,7 @@ public sealed partial class MainWindow : Window
         UpdateMinZoomFactor();
 
         _framesPerSecond = (double)videoProperties.FrameRate.Numerator / videoProperties.FrameRate.Denominator;
-        _finalFrame = Math.Round(source.Duration.Value.TotalSeconds * _framesPerSecond) - 1.0;
+        _finalFrame = Math.Round(source.Duration!.Value.TotalSeconds * _framesPerSecond) - 1.0;
         _slider.Maximum = _finalFrame;
         _slider.ThumbToolTipValueConverter = new TimeSpanFormatter(_framesPerSecond);
 
@@ -216,7 +216,7 @@ public sealed partial class MainWindow : Window
         if (_currentFrame is null)
             return;
 
-        if (_player.CurrentState != MediaPlayerState.Playing)
+        if (_player!.CurrentState != MediaPlayerState.Playing)
         {
             _player.Play();
         }
@@ -262,7 +262,7 @@ public sealed partial class MainWindow : Window
         if (_currentFrame is null)
             return;
 
-        _player.Pause();
+        _player!.Pause();
         _player.Position = TimeSpan.FromSeconds(e.NewValue / _framesPerSecond);
     }
 
@@ -274,7 +274,7 @@ public sealed partial class MainWindow : Window
         if (_currentFrame is null)
             return;
 
-        var path = Path.Combine(_dir, _fileName + "." + _currentPosition + ".jpg");
+        var path = Path.Combine(_dir!, _fileName + "." + _currentPosition + ".jpg");
         await _currentFrame.SaveAsync(path, CanvasBitmapFileFormat.Auto, 0.95f);
 
         using (var stream = await FileRandomAccessStream.OpenAsync(path, FileAccessMode.ReadWrite))
@@ -356,16 +356,16 @@ public sealed partial class MainWindow : Window
         {
             case VirtualKey.Left:
                 if (!IsRateLimited())
-                    _player.StepBackwardOneFrame();
+                    _player!.StepBackwardOneFrame();
                 break;
 
             case VirtualKey.Right:
                 if (!IsRateLimited())
-                    _player.StepForwardOneFrame();
+                    _player!.StepForwardOneFrame();
                 break;
 
             case VirtualKey.G when IsControlDown():
-                _player.Pause();
+                _player!.Pause();
                 var frameNumberBox = new NumberBox
                 {
                     Header = "Frame number",
@@ -390,7 +390,7 @@ public sealed partial class MainWindow : Window
                 break;
 
             case VirtualKey.O when IsControlDown():
-                _player.Pause();
+                _player!.Pause();
                 await Open();
                 break;
 
@@ -490,7 +490,7 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
-    class TimeSpanFormatter : IValueConverter
+    partial class TimeSpanFormatter : IValueConverter
     {
         readonly double _framesPerSecond;
 

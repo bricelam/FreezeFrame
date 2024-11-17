@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.3.32611.2
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FreezeFrame", "FreezeFrame\FreezeFrame.csproj", "{5E5D27AA-0750-44E5-9422-980548012BE4}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FreezeFrame", "FreezeFrame\FreezeFrame.csproj", "{5E5D27AA-0750-44E5-9422-980548012BE4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

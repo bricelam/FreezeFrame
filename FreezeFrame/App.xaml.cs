@@ -4,7 +4,7 @@ namespace FreezeFrame;
 
 public partial class App : Application
 {
-    Window _window;
+    Window? _window;
 
     public App()
         => InitializeComponent();
