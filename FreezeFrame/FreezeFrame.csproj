@@ -12,7 +12,7 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
     <ApplicationIcon>Resources\FreezeFrameIcon.ico</ApplicationIcon>
-    <PackageCertificateThumbprint>F4D452B501C18A23E8EED7FA67C7510FA0F9BCCB</PackageCertificateThumbprint>
+    <PackageCertificateThumbprint>08EFC8CB4F0303DD4968A46F176CBA010FAE639C</PackageCertificateThumbprint>
     <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
     <GenerateAppInstallerFile>True</GenerateAppInstallerFile>
     <AppxPackageSigningTimestampServerUrl>http://time.certum.pl</AppxPackageSigningTimestampServerUrl>
